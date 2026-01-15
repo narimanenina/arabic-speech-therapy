@@ -4,13 +4,12 @@ import speech_recognition as sr
 import io
 import difflib
 import os
-import librosa
-import soundfile as sf
+from pydub import AudioSegment
 from streamlit_mic_recorder import mic_recorder
 from datetime import datetime
 
-# --- 1. إعدادات الصفحة والجماليات ---
-st.set_page_config(page_title="مقيم نطق الأطفال", layout="centered")
+# --- 1. إعدادات الصفحة والتصميم ---
+st.set_page_config(page_title="مقيم نطق الأطفال", page_icon="🎙️", layout="centered")
 
 st.markdown("""
     <style>
@@ -19,11 +18,12 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-right: 5px solid #2196F3;
         margin-bottom: 20px; color: #333;
     }
-    h1 { color: #1E3A8A; text-align: center; }
+    h1 { color: #1E3A8A; text-align: center; font-family: 'Arial'; }
     [data-testid="stMetricValue"] { font-size: 28px; color: #2196F3; }
     </style>
     """, unsafe_allow_html=True)
 
+# تحميل قاعدة البيانات الفونولوجية
 @st.cache_data
 def load_data():
     if os.path.exists('arabic_phonetics.csv'):
@@ -32,7 +32,7 @@ def load_data():
 
 df = load_data()
 
-# --- 2. وظيفة حفظ البيانات ---
+# --- 2. وظائف التشخيص والحفظ ---
 def save_to_database(name, age, target, spoken, accuracy, report_text):
     db_file = 'patient_records.csv'
     new_entry = {
@@ -50,7 +50,6 @@ def save_to_database(name, age, target, spoken, accuracy, report_text):
     else:
         df_new.to_csv(db_file, mode='a', index=False, header=False, encoding='utf-8-sig')
 
-# --- 3. محرك التشخيص الفونولوجي المعدل ---
 def run_diagnosis(target, spoken):
     if df is None: return [], "", "", 0
     matcher = difflib.SequenceMatcher(None, target, spoken)
@@ -69,15 +68,16 @@ def run_diagnosis(target, spoken):
             for tc, sc in zip(t_p, s_p):
                 t_row, s_row = df[df['letter'] == tc], df[df['letter'] == sc]
                 if not t_row.empty and not s_row.empty:
-                    report.append(f"🔄 إبدال: ({sc}) بدلاً من ({tc}) | المخرج: {t_row.iloc[0]['place']} ← {s_row.iloc[0]['place']}")
-                    s_ipa.append(s_row.iloc[0]['ipa'])
+                    tr, sr = t_row.iloc[0], s_row.iloc[0]
+                    report.append(f"🔄 إبدال: ({sc}) بدلاً من ({tc}) | المخرج: {tr['place']} ← {sr['place']}")
+                    s_ipa.append(sr['ipa'])
         elif tag == 'delete':
             for char in t_p:
                 if char != " ": report.append(f"❌ حذف: حرف ({char})")
         elif tag == 'insert':
             for char in s_p:
                 if char != " ":
-                    report.append(f"➕ إضافة: حرف ({char})")
+                    report.append(f"➕ إضافة: حرف زائد ({char})")
                     s_row = df[df['letter'] == char]
                     if not s_row.empty: s_ipa.append(s_row.iloc[0]['ipa'])
         elif tag == 'equal':
@@ -89,74 +89,73 @@ def run_diagnosis(target, spoken):
                     
     return report, "".join(t_ipa), "".join(s_ipa), accuracy
 
-# --- 4. واجهة المستخدم ---
-st.title("تقييم الكلام لدى الأطفال ذوي اضطرابات النطق")
+# --- 3. واجهة المستخدم ---
+st.title("تشخيص اضطرابات النطق لدى الأطفال")
 
 if df is not None:
     with st.expander("👤 بيانات الطفل", expanded=True):
         c1, c2 = st.columns(2)
-        child_name = c1.text_input("اسم الطفل:", placeholder="اسم الطفل")
+        child_name = c1.text_input("اسم الطفل:", placeholder="أدخل الاسم")
         child_age = c2.number_input("العمر:", 2, 15, 5)
 
-    target_text = st.text_input("🎯 النص المستهدف:", placeholder="اكتب الكلمة هنا")
+    target_text = st.text_input("🎯 النص المستهدف:", placeholder="اكتب الكلمة أو الجملة هنا")
     
     # مسجل الصوت
     record = mic_recorder(start_prompt="ابدأ تسجيل الصوت 🎤", stop_prompt="توقف للتحليل ⏹️", key='recorder')
     
     spoken_text = ""
     if record:
-        st.write("🎧 استمع للتسجيل قبل التحليل:")
+        st.write("🎧 استمع للتسجيل:")
         st.audio(record['bytes'])
         
         try:
-            with st.spinner("جاري معالجة الصوت والتعرف على الكلمات..."):
-                # معالجة الصوت
-                raw_audio = io.BytesIO(record['bytes'])
-                y, sr_rate = librosa.load(raw_audio, sr=None) 
+            with st.spinner("جاري معالجة الصوت وتحويل التنسيق..."):
+                # تحويل ملف الصوت القادم من المتصفح باستخدام pydub
+                audio_data = io.BytesIO(record['bytes'])
+                audio_segment = AudioSegment.from_file(audio_data)
                 
-                buf = io.BytesIO()
-                sf.write(buf, y, sr_rate, format='WAV', subtype='PCM_16')
-                buf.seek(0)
+                # تصدير إلى WAV متوافق مع محرك جوجل
+                wav_io = io.BytesIO()
+                audio_segment.export(wav_io, format="wav", parameters=["-acodec", "pcm_s16le", "-ar", "16000"])
+                wav_io.seek(0)
                 
                 r = sr.Recognizer()
-                with sr.AudioFile(buf) as source:
-                    # تعديل لضبط مستوى الضجيج في الخلفية
+                with sr.AudioFile(wav_io) as source:
                     r.adjust_for_ambient_noise(source, duration=0.5)
                     audio_content = r.record(source)
                     spoken_text = r.recognize_google(audio_content, language="ar-SA")
             
             st.success(f"الكلمة المكتشفة: **{spoken_text}**")
             
-        except sr.UnknownValueError:
-            st.error("⚠️ لم يتم التعرف على الصوت. حاول النطق بوضوح أكثر في مكان هادئ.")
         except Exception as e:
-            st.error(f"⚠️ خطأ فني: {e}")
+            st.error(f"⚠️ لم يتم التعرف على الصوت. (الخطأ: {str(e)})")
 
     if spoken_text and target_text:
         res, tipa, sipa, acc = run_diagnosis(target_text, spoken_text)
         
-        st.markdown(f"<div class='report-card'><h3>📊 تقرير: {child_name if child_name else 'عام'}</h3><p>دقة النطق الإجمالية: {acc}%</p></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='report-card'><h3>📊 تقرير: {child_name if child_name else 'عام'}</h3><p>دقة النطق: {acc}%</p></div>", unsafe_allow_html=True)
         st.write(f"**IPA المستهدف:** `/{tipa}/` | **IPA المنطوق:** `/{sipa}/`")
         
         if st.button("💾 حفظ التقرير في سجل المتابعة"):
             if not child_name:
-                st.warning("يرجى إدخال اسم الطفل لحفظ السجل.")
+                st.warning("يرجى إدخال اسم الطفل قبل الحفظ.")
             else:
                 save_to_database(child_name, child_age, target_text, spoken_text, acc, res)
-                st.success(f"تم حفظ تقرير {child_name} بنجاح!")
+                st.success(f"تم حفظ التقرير بنجاح.")
 
         st.divider()
         if res:
-            st.subheader("📋 تفاصيل التشخيص الفونولوجي:")
+            st.subheader("📋 تفاصيل التشخيص:")
             for line in res: st.info(line)
         else:
-            st.success("✅ نطق سليم تماماً!")
+            st.success("✅ نطق سليم!")
 
     # عرض السجل في الجانب
     if st.sidebar.button("📂 عرض سجل المتابعة"):
         if os.path.exists('patient_records.csv'):
             st.sidebar.dataframe(pd.read_csv('patient_records.csv'))
         else:
-            st.sidebar.info("لا يوجد سجلات بعد.")
+            st.sidebar.info("لا توجد سجلات حالياً.")
 else:
     st.error("ملف 'arabic_phonetics.csv' مفقود.")
+
