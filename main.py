@@ -66,7 +66,7 @@ def run_diagnosis(target, spoken):
 st.title("🔬 محلل اضطرابات النطق الفونولوجي")
 
 if df is not None:
-    target_text = st.text_input("🎯 الكلمة المستهدفة:", "أكتب الكلمة أو الجملة هنا")
+    target_text = st.text_input("🎯 النص المستهدف:")
     
     st.write("---")
     st.subheader("🎤 تسجيل نطق الطفل")
@@ -117,6 +117,7 @@ if df is not None:
 
 else:
     st.error("تأكد من وجود ملف arabic_phonetics.csv")
+
 
 
 
