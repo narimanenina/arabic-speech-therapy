@@ -66,6 +66,11 @@ def run_diagnosis(target, spoken):
 st.title("🔬 محلل اضطرابات النطق الفونولوجي")
 
 if df is not None:
+    with st.expander("👤 بيانات الطفل", expanded=True):
+        c1, c2 = st.columns(2)
+        child_name = c1.text_input("اسم الطفل:", placeholder="اسم الطفل")
+        child_age = c2.number_input("العمر:", 2, 15, 5)
+
     target_text = st.text_input("🎯 النص المستهدف:")
     
     st.write("---")
@@ -114,9 +119,31 @@ if df is not None:
         else:
             st.balloons()
             st.success("أحسنت! النطق سليم.")
+    if spoken_text and target_text:
+        res, tipa, sipa, acc = run_diagnosis(target_text, spoken_text)        
+        # --- زر الحفظ الجديد ---
+        if st.button("💾 حفظ التقرير في سجل المتابعة"):
+            if not child_name:
+                st.warning("يرجى إدخال اسم الطفل قبل الحفظ.")
+            else:
+                save_to_database(child_name, child_age, target_text, spoken_text, acc, res)
+                st.success(f"تم حفظ تقرير {child_name} بنجاح في ملف patient_records.csv")
+
+        st.divider()
+        if res:
+            st.subheader("📋 تفاصيل الأخطاء:")
+            for line in res: st.info(line)
+
+    # --- خيار عرض السجل المحفوظ ---
+    if st.sidebar.button("📂 عرض سجل المتابعة"):
+        if os.path.exists('patient_records.csv'):
+            st.sidebar.write(pd.read_csv('patient_records.csv'))
+        else:
+            st.sidebar.write("لا يوجد سجلات محفوظة بعد.")
 
 else:
     st.error("تأكد من وجود ملف arabic_phonetics.csv")
+
 
 
 
