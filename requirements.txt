@@ -4,3 +4,5 @@ SpeechRecognition
 librosa
 soundfile
 streamlit-mic-recorder
+pydub
+
