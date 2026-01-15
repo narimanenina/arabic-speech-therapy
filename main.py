@@ -46,7 +46,7 @@ def save_to_database(name, age, target, spoken, accuracy, report_text):
         'اسم الطفل': name,
         'العمر': age,
         'النص المستهدف': target,
-        'نطق الطفل': spoken,
+        'ما قاله الطفل': spoken,
         'نسبة النجاح': f"{accuracy}%",
         'التشخيص': " | ".join(report_text)
     }
@@ -70,7 +70,7 @@ def run_diagnosis(target, spoken):
             row = df[df['letter'] == char]
             t_ipa.append(row.iloc[0]['ipa'] if not row.empty else char)
 
-    # تحليل الاختلافات
+    # تحليل العمليات الفونولوجية
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         t_p, s_p = target[i1:i2], spoken[j1:j2]
         if tag == 'replace':
@@ -104,6 +104,7 @@ def run_diagnosis(target, spoken):
 st.title("🔬 محلل اضطرابات النطق الفونولوجي")
 
 if df is not None:
+    # إدخال بيانات الطفل
     with st.expander("👤 بيانات الطفل", expanded=True):
         c1, c2 = st.columns(2)
         child_name = c1.text_input("اسم الطفل:", placeholder="أدخل اسم الطفل")
@@ -115,10 +116,11 @@ if df is not None:
     st.subheader("🎤 تسجيل نطق الطفل")
     record = mic_recorder(start_prompt="سجل الآن", stop_prompt="توقف للتحليل", key='recorder')
     
-    final_spoken = ""
+    # استخدام Session State للحفاظ على النص المعدل
+    if 'final_spoken' not in st.session_state:
+        st.session_state.final_spoken = ""
 
     if record:
-        st.write("🎧 استمع للتسجيل:")
         st.audio(record['bytes'])
         try:
             with st.spinner("جاري التعرف على الكلام..."):
@@ -131,51 +133,50 @@ if df is not None:
                     audio_content = r.record(source)
                     ai_text = r.recognize_google(audio_content, language="ar-SA")
             
-            st.warning("⚠️ إذا قام البرنامج بتصحيح الكلمة تلقائياً، يرجى تعديلها أدناه:")
-            final_spoken = st.text_input("ما قاله الطفل فعلياً:", ai_text)
+            st.warning("⚠️ إذا قام البرنامج بتصحيح الكلمة تلقائياً، يرجى تعديلها لتطابق ما قاله الطفل فعلياً:")
+            st.session_state.final_spoken = st.text_input("ما قاله الطفل فعلياً:", ai_text)
             
-        except Exception as e:
-            st.error("لم يتم التعرف على الصوت. يرجى الكتابة يدوياً.")
-            final_spoken = st.text_input("اكتب الكلمة التي نطقها الطفل هنا:")
+        except Exception:
+            st.error("لم يتم التعرف على الصوت بوضوح. يرجى الكتابة يدوياً.")
+            st.session_state.final_spoken = st.text_input("اكتب الكلمة التي نطقها الطفل هنا:")
 
-    # عرض النتائج ومعالجتها
-    if final_spoken and target_text:
-        res, tipa, sipa, acc = run_diagnosis(target_text, final_spoken)
+    # عرض النتائج في حال توفر النص المنطوق والمستهدف
+    if st.session_state.final_spoken and target_text:
+        res, tipa, sipa, acc = run_diagnosis(target_text, st.session_state.final_spoken)
         
         st.divider()
         st.markdown(f"<div class='report-card'><h3>📊 تقرير: {child_name if child_name else 'عام'}</h3><p>دقة النطق: {acc}%</p></div>", unsafe_allow_html=True)
         
-        c1, c2 = st.columns(2)
-        c1.info(f"**IPA المستهدف:** `/{tipa}/`")
-        c2.success(f"**IPA المسموع:** `/{sipa}/`")
+        col_ipa1, col_ipa2 = st.columns(2)
+        col_ipa1.info(f"**IPA المستهدف:** `/{tipa}/`")
+        col_ipa2.success(f"**IPA المسموع:** `/{sipa}/`")
         
-        # عرض تفاصيل الأخطاء
         if res:
             st.subheader("📋 تقرير الأخطاء المكتشفة:")
             for line in res:
                 st.write(line)
         else:
             st.balloons()
-            st.success("أحسنت! النطق سليم.")
+            st.success("أحسنت! النطق سليم ومطابق للمخرج.")
 
-        # --- زر الحفظ ---
+        # زر الحفظ
         if st.button("💾 حفظ التقرير في سجل المتابعة"):
             if not child_name:
-                st.warning("يرجى إدخال اسم الطفل قبل الحفظ.")
+                st.error("يرجى إدخال اسم الطفل قبل الحفظ.")
             else:
-                save_to_database(child_name, child_age, target_text, final_spoken, acc, res)
-                st.success(f"تم حفظ تقرير {child_name} بنجاح في ملف patient_records.csv")
+                save_to_database(child_name, child_age, target_text, st.session_state.final_spoken, acc, res)
+                st.success(f"تم حفظ تقرير الطفل {child_name} بنجاح!")
 
-    # --- خيار عرض السجل المحفوظ في الجانب ---
+    # عرض السجل في الجانب
     st.sidebar.title("إدارة السجلات")
     if st.sidebar.button("📂 عرض سجل المتابعة"):
         if os.path.exists('patient_records.csv'):
             st.sidebar.dataframe(pd.read_csv('patient_records.csv'))
         else:
-            st.sidebar.info("لا يوجد سجلات محفوظة بعد.")
-
+            st.sidebar.info("لا توجد سجلات محفوظة بعد.")
 else:
-    st.error("تأكد من وجود ملف arabic_phonetics.csv في مجلد المشروع.")
+    st.error("ملف arabic_phonetics.csv مفقود.")
+
 
 
 
