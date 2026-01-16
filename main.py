@@ -27,7 +27,6 @@ def load_phonetics_data():
 
 df_phonetics = load_phonetics_data()
 
-# --- 2. وظائف إدارة قاعدة البيانات (Excel) ---
 def save_to_database(name, age, target, spoken, accuracy, report_text):
     db_file = 'patient_records.xlsx'
     new_entry = {
@@ -43,12 +42,18 @@ def save_to_database(name, age, target, spoken, accuracy, report_text):
     df_new = pd.DataFrame([new_entry])
     
     try:
+        # إذا كان الملف موجوداً، نحاول قراءته
         if os.path.exists(db_file):
-            df_existing = pd.read_excel(db_file, engine='openpyxl')
-            df_final = pd.concat([df_existing, df_new], ignore_index=True)
+            try:
+                df_existing = pd.read_excel(db_file, engine='openpyxl')
+                df_final = pd.concat([df_existing, df_new], ignore_index=True)
+            except:
+                # إذا فشل في القراءة (بسبب خطأ Zip file)، نبدأ ملفاً جديداً تماماً
+                df_final = df_new
         else:
             df_final = df_new
         
+        # حفظ الملف
         df_final.to_excel(db_file, index=False, engine='openpyxl')
         return True
     except Exception as e:
@@ -190,6 +195,7 @@ if df_phonetics is not None:
 
 else:
     st.error("⚠️ ملف 'arabic_phonetics.csv' غير موجود. يرجى رفعه لتفعيل محرك التشخيص.")
+
 
 
 
