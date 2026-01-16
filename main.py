@@ -172,7 +172,7 @@ if df is not None:
             st.success("أحسنت! النطق سليم.")
             
     if final_spoken and target_text:
-        res, tipa, sipa, acc = run_diagnosis(target_text, spoken_text)
+        res, tipa, sipa, acc = run_diagnosis(target_text, final_spoken)
         
         # عرض النتائج في بطاقة
         st.markdown(f"<div class='report-card'><h3>📊 تقرير: {child_name}</h3><p>دقة النطق: {acc}%</p></div>", unsafe_allow_html=True)
@@ -183,7 +183,7 @@ if df is not None:
             if not child_name:
                 st.warning("يرجى إدخال اسم الطفل قبل الحفظ.")
             else:
-                save_to_database(child_name, child_age, target_text, spoken_text, acc, res)
+                save_to_database(child_name, child_age, target_text, final_spoken, acc, res)
                 st.success(f"تم حفظ تقرير {child_name} بنجاح في ملف patient_records.csv")
 
         st.divider()
@@ -200,6 +200,7 @@ if df is not None:
 
 else:
     st.error("تأكد من وجود ملف arabic_phonetics.csv")
+
 
 
 
