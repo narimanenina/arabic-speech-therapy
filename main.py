@@ -170,9 +170,37 @@ if df is not None:
         else:
             st.balloons()
             st.success("أحسنت! النطق سليم.")
+            
+    if final_spoken and target_text:
+        res, tipa, sipa, acc = run_diagnosis(target_text, spoken_text)
+        
+        # عرض النتائج في بطاقة
+        st.markdown(f"<div class='report-card'><h3>📊 تقرير: {child_name}</h3><p>دقة النطق: {acc}%</p></div>", unsafe_allow_html=True)
+        st.write(f"**IPA المستهدف:** `/{tipa}/` | **المنطوق:** `/{sipa}/`")
+        
+        # --- زر الحفظ الجديد ---
+        if st.button("💾 حفظ التقرير في سجل المتابعة"):
+            if not child_name:
+                st.warning("يرجى إدخال اسم الطفل قبل الحفظ.")
+            else:
+                save_to_database(child_name, child_age, target_text, spoken_text, acc, res)
+                st.success(f"تم حفظ تقرير {child_name} بنجاح في ملف patient_records.csv")
+
+        st.divider()
+        if res:
+            st.subheader("📋 تفاصيل الأخطاء:")
+            for line in res: st.info(line)
+
+    # --- خيار عرض السجل المحفوظ ---
+    if st.sidebar.button("📂 عرض سجل المتابعة"):
+        if os.path.exists('patient_records.csv'):
+            st.sidebar.write(pd.read_csv('patient_records.csv'))
+        else:
+            st.sidebar.write("لا يوجد سجلات محفوظة بعد.")
 
 else:
     st.error("تأكد من وجود ملف arabic_phonetics.csv")
+
 
 
 
