@@ -9,22 +9,25 @@ from pydub import AudioSegment
 from streamlit_mic_recorder import mic_recorder
 from datetime import datetime
 
-# --- 1. إعدادات التصميم ---
+# --- 1. إعدادات الصفحة والتصميم ---
 st.set_page_config(page_title="مقيم نطق الأطفال", layout="centered")
 
+# دالة تنظيف النص العربي من التشكيل
 def clean_arabic(text):
-    noise = re.compile(r'[\u064B-\u0652]') # إزالة التشكيل
+    noise = re.compile(r'[\u064B-\u0652]') 
     return re.sub(noise, '', text).strip()
 
+# تحميل بيانات الفونيمات (الرموز الصوتية)
 @st.cache_data
 def load_phonetics_data():
-    if os.path.exists('arabic_phonetics.csv'):
-        return pd.read_csv('arabic_phonetics.csv')
+    file_path = 'arabic_phonetics.csv'
+    if os.path.exists(file_path):
+        return pd.read_csv(file_path)
     return None
 
 df_phonetics = load_phonetics_data()
 
-# --- 2. وظيفة حفظ البيانات (Excel) ---
+# --- 2. وظائف إدارة قاعدة البيانات (Excel) ---
 def save_to_database(name, age, target, spoken, accuracy, report_text):
     db_file = 'patient_records.xlsx'
     new_entry = {
@@ -39,29 +42,36 @@ def save_to_database(name, age, target, spoken, accuracy, report_text):
     
     df_new = pd.DataFrame([new_entry])
     
-    if os.path.exists(db_file):
-        # قراءة الملف الحالي وإضافة السطر الجديد
-        df_existing = pd.read_excel(db_file)
-        df_final = pd.concat([df_existing, df_new], ignore_index=True)
-    else:
-        df_final = df_new
-    
-    # حفظ الملف بصيغة إكسل (تأكد من تثبيت pip install openpyxl)
-    df_final.to_excel(db_file, index=False)
+    try:
+        if os.path.exists(db_file):
+            df_existing = pd.read_excel(db_file, engine='openpyxl')
+            df_final = pd.concat([df_existing, df_new], ignore_index=True)
+        else:
+            df_final = df_new
+        
+        df_final.to_excel(db_file, index=False, engine='openpyxl')
+        return True
+    except Exception as e:
+        st.error(f"فشل الحفظ: {e}")
+        return False
 
 # --- 3. محرك التشخيص الفونولوجي ---
 def run_diagnosis(target, spoken):
-    if df_phonetics is None: return [], "", "", 0
+    if df_phonetics is None: 
+        return [], "", "", 0
+    
     target = clean_arabic(target)
     spoken = clean_arabic(spoken)
     matcher = difflib.SequenceMatcher(None, target, spoken)
     report, t_ipa, s_ipa = [], [], []
     accuracy = round(matcher.ratio() * 100, 1)
 
+    # تحويل النص المستهدف إلى رموز IPA
     for char in target:
         row = df_phonetics[df_phonetics['letter'] == char] if char != " " else None
         t_ipa.append(row.iloc[0]['ipa'] if row is not None and not row.empty else char)
 
+    # تحليل الاختلافات (إبدال، حذف، إضافة)
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         t_p, s_p = target[i1:i2], spoken[j1:j2]
         if tag == 'replace':
@@ -88,90 +98,98 @@ def run_diagnosis(target, spoken):
                     
     return report, "".join(t_ipa), "".join(s_ipa), accuracy
 
-# --- 4. واجهة المستخدم ---
+# --- 4. واجهة المستخدم الرسومية ---
 st.title("🔬 محلل اضطرابات النطق الفونولوجي")
 
 if df_phonetics is not None:
+    # --- القائمة الجانبية ---
     with st.sidebar:
-        st.header("⚙️ الإعدادات والسجلات")
-        if st.button("📂 عرض سجل المتابعة الكامل"):
+        st.header("⚙️ الإدارة")
+        if st.button("📂 عرض سجل المتابعة"):
             if os.path.exists('patient_records.xlsx'):
-                records_df = pd.read_excel('patient_records.xlsx')
-                st.session_state['show_records'] = True
+                try:
+                    df_history = pd.read_excel('patient_records.xlsx', engine='openpyxl')
+                    st.session_state['view_db'] = True
+                except Exception as e:
+                    st.error(f"خطأ في قراءة السجل: {e}")
             else:
-                st.error("لا توجد سجلات محفوظة بعد.")
+                st.warning("⚠️ لا توجد سجلات بعد.")
+        
+        if st.button("🗑️ إخفاء السجل"):
+            st.session_state['view_db'] = False
 
-    with st.expander("👤 بيانات الطفل", expanded=True):
+    # --- مدخلات البيانات ---
+    with st.expander("👤 بيانات الطفل الأساسية", expanded=True):
         c1, c2 = st.columns(2)
-        child_name = c1.text_input("اسم الطفل:", placeholder="أدخل الاسم هنا")
+        child_name = c1.text_input("اسم الطفل:")
         child_age = c2.number_input("العمر:", 2, 15, 5)
         
-    target_text = st.text_input("🎯 النص المستهدف (الكلمة الصحيحة):")
+    target_text = st.text_input("🎯 النص المستهدف (اكتب الكلمة الصحيحة هنا):")
     
-    st.write("---")
+    st.divider()
+    
+    # --- منطقة التسجيل والتحليل ---
     st.subheader("🎤 تسجيل نطق الطفل")
-    record = mic_recorder(start_prompt="بدء التسجيل", stop_prompt="توقف للتحليل", key='recorder')
+    record = mic_recorder(start_prompt="إبدأ التسجيل", stop_prompt="توقف للتحليل", key='recorder')
     
     final_spoken = ""
 
     if record:
         st.audio(record['bytes'])
         try:
-            with st.spinner("جاري معالجة الصوت..."):
+            with st.spinner("جاري التعرف على الكلام..."):
                 audio_segment = AudioSegment.from_file(io.BytesIO(record['bytes']))
                 wav_io = io.BytesIO()
                 audio_segment.export(wav_io, format="wav", parameters=["-acodec", "pcm_s16le", "-ar", "16000"])
                 wav_io.seek(0)
+                
                 r = sr.Recognizer()
                 with sr.AudioFile(wav_io) as source:
                     audio_content = r.record(source)
                     ai_text = r.recognize_google(audio_content, language="ar-SA")
             
-            st.warning("⚠️ تأكد مما سمعه البرنامج وعدله إذا لزم الأمر:")
-            final_spoken = st.text_input("نطق الطفل المكتشف:", ai_text)
+            st.info(f"البرنامج سمع: {ai_text}")
+            final_spoken = st.text_input("تعديل النص (إذا أخطأ البرنامج في الكتابة):", ai_text)
             
-        except Exception as e:
-            st.error("لم يتم التعرف على الصوت. يرجى الكتابة يدوياً.")
-            final_spoken = st.text_input("اكتب الكلمة التي نطقها الطفل هنا:")
+        except Exception:
+            st.error("لم يتم التعرف على الصوت بشكل تلقائي. يرجى كتابة ما قاله الطفل يدوياً.")
+            final_spoken = st.text_input("اكتب نطق الطفل هنا:")
 
     # --- عرض النتائج والحفظ ---
     if final_spoken and target_text:
         res, tipa, sipa, acc = run_diagnosis(target_text, final_spoken)
         
-        st.divider()
-        st.metric("نسبة صحة النطق", f"{acc}%")
+        st.subheader("📊 نتيجة التحليل")
+        st.metric("دقة النطق", f"{acc}%")
         
         col1, col2 = st.columns(2)
-        col1.info(f"**IPA المستهدف:** `/{tipa}/`")
-        col2.success(f"**IPA المسموع:** `/{sipa}/`")
+        col1.markdown(f"**IPA المستهدف:**\n`/{tipa}/`")
+        col2.markdown(f"**IPA المنطوق:**\n`/{sipa}/`")
         
         if res:
-            st.subheader("📋 تقرير الأخطاء المكتشفة:")
-            for line in res:
-                st.write(line)
+            with st.expander("📋 تفاصيل التشخيص الفونولوجي", expanded=True):
+                for line in res:
+                    st.write(line)
         else:
             st.balloons()
-            st.success("نطق سليم تماماً! أحسنت.")
+            st.success("أحسنت! النطق مطابق تماماً للمستهدف.")
 
-        if st.button("💾 حفظ هذه الجلسة في السجل"):
+        if st.button("💾 حفظ هذه النتيجة في السجل"):
             if not child_name:
-                st.error("⚠️ يرجى إدخال اسم الطفل أولاً.")
+                st.warning("يرجى إدخال اسم الطفل قبل الحفظ.")
             else:
-                save_to_database(child_name, child_age, target_text, final_spoken, acc, res)
-                st.success(f"تمت إضافة بيانات {child_name} إلى السجل بنجاح!")
+                if save_to_database(child_name, child_age, target_text, final_spoken, acc, res):
+                    st.success(f"تم حفظ بيانات {child_name} بنجاح!")
 
-    # عرض جدول السجلات إذا تم تفعيل الخيار
-    if st.session_state.get('show_records'):
+    # --- عرض قاعدة البيانات إذا تم تفعيلها ---
+    if st.session_state.get('view_db', False):
         st.divider()
-        st.subheader("📜 سجلات المتابعة المحفوظة")
-        view_df = pd.read_excel('patient_records.xlsx')
-        st.dataframe(view_df, use_container_width=True)
-        if st.button("إغلاق السجل"):
-            st.session_state['show_records'] = False
-            st.rerun()
+        st.subheader("📜 سجل المتابعة المحفوظ")
+        df_view = pd.read_excel('patient_records.xlsx', engine='openpyxl')
+        st.dataframe(df_view, use_container_width=True)
 
 else:
-    st.error("خطأ: لم يتم العثور على ملف arabic_phonetics.csv. يرجى رفعه في مجلد المشروع.")
+    st.error("⚠️ ملف 'arabic_phonetics.csv' غير موجود. يرجى رفعه لتفعيل محرك التشخيص.")
 
 
 
