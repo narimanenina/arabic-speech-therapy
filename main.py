@@ -26,7 +26,7 @@ def load_data():
 df = load_data()
 # --- 2. وظيفة حفظ البيانات في سجل المرضى ---
 def save_to_database(name, age, target, spoken, accuracy, report_text):
-    db_file = 'patient_records.csv'
+    db_file = 'patient_records.xlsx'
     new_entry = {
         'التاريخ': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         'اسم الطفل': name,
@@ -184,7 +184,7 @@ if df is not None:
                 st.warning("يرجى إدخال اسم الطفل قبل الحفظ.")
             else:
                 save_to_database(child_name, child_age, target_text, final_spoken, acc, res)
-                st.success(f"تم حفظ تقرير {child_name} بنجاح في ملف patient_records.csv")
+                st.success(f"تم حفظ تقرير {child_name} بنجاح في ملف patient_records.xlsx")
 
         st.divider()
         if res:
@@ -193,13 +193,14 @@ if df is not None:
 
     # --- خيار عرض السجل المحفوظ ---
     if st.sidebar.button("📂 عرض سجل المتابعة"):
-        if os.path.exists('patient_records.csv'):
-            st.sidebar.write(pd.read_csv('patient_records.csv'))
+        if os.path.exists('patient_records.xlsx'):
+            st.sidebar.write(pd.read_csv('patient_records.xlsx'))
         else:
             st.sidebar.write("لا يوجد سجلات محفوظة بعد.")
 
 else:
     st.error("تأكد من وجود ملف arabic_phonetics.csv")
+
 
 
 
