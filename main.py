@@ -191,20 +191,16 @@ if df is not None:
             st.subheader("📋 تفاصيل الأخطاء:")
             for line in res: st.info(line)
 
-# --- خيار عرض السجل المحفوظ ---
+    # --- خيار عرض السجل المحفوظ ---
     if st.sidebar.button("📂 عرض سجل المتابعة"):
         if os.path.exists('patient_records.xlsx'):
-            # تصحيح الدالة هنا من read_xlsx إلى read_excel
             df = pd.read_excel('patient_records.xlsx')
-            
-            # عرض البيانات في المنطقة الرئيسية بدلاً من الشريط الجانبي لتكون أوضح
-            st.write("### 📋 سجل بيانات المرضى")
-            st.dataframe(df)
         else:
             st.sidebar.write("لا يوجد سجلات محفوظة بعد.")
 
 else:
     st.error("تأكد من وجود ملف arabic_phonetics.csv")
+
 
 
 
