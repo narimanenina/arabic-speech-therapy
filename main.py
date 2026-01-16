@@ -194,12 +194,13 @@ if df is not None:
     # --- خيار عرض السجل المحفوظ ---
     if st.sidebar.button("📂 عرض سجل المتابعة"):
         if os.path.exists('patient_records.xlsx'):
-            st.sidebar.write(pd.read_csv('patient_records.xlsx'))
+            st.sidebar.write(pd.read_xlsx('patient_records.xlsx'))
         else:
             st.sidebar.write("لا يوجد سجلات محفوظة بعد.")
 
 else:
     st.error("تأكد من وجود ملف arabic_phonetics.csv")
+
 
 
 
